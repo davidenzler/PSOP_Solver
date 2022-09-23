@@ -12,9 +12,9 @@ using namespace std;
 
 class Active_Path {
     private:
-        vector<Active_Node*> Path;
         int thread_id;
     public:
+        vector<Active_Node*> Path;
         Active_Path();
         Active_Path(int arr_size);
         Active_Node* get_element(int index);

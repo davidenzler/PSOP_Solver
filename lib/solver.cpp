@@ -368,9 +368,6 @@ bool solver::Steal_Workload() {
     }
 
     if (!(stolen_node.n == -1)) {
-        // send single instrc node to Generate_SolverState
-        // need to gen instrct node when stealing??
-        Generate_SolverState(stolen_node);
         terminate = false;
     }
 
@@ -451,9 +448,9 @@ void solver::transfer_wlkload(instrct_node *stolen_node) {
     if(removedNode.n != -1) {
         stolen_tree = SolversGlobal[designated_thread]->cur_active_tree;
         stolen_soln = SolversGlobal[designated_thread]->problem_state.cur_solution;
-        //Generate_SolverState(removedNode, stolen_tree, stolen_soln, searchDepth);
+        Generate_SolverState(removedNode, stolen_tree, stolen_soln, searchDepth);
     }
-
+    
     busy_arr[thread_id].store(false);
     return;
 }
@@ -565,10 +562,13 @@ void solver::Generate_SolverState(node removedNode, Active_Path stolen_tree, vec
     int taken_node = -1;
     int counter = 0;
     vector<int> cur_soln = vector<int>();
+    Active_Path tree;
+
+    // rebuild the stolen solution only up to stolen depth
     for(int i = 0; i <= stolen_depth; i++) {
         cur_soln.push_back(stolen_soln[i]);
     }
-    cur_soln.push_back(removedNode.n);
+    cur_soln.push_back(removedNode.n); // add stolen node to solution
 
     int size = cur_soln.size();
     int cur_node = cur_soln.front();
@@ -581,6 +581,7 @@ void solver::Generate_SolverState(node removedNode, Active_Path stolen_tree, vec
     problem_state.cur_solution.push_back(cur_node);
     problem_state.taken_arr[cur_node] = 1;
     for (int vertex : dependent_graph[cur_node]) problem_state.depCnt[vertex]--;
+
     counter++;
     
     regenerate_hungstate();
@@ -602,7 +603,12 @@ void solver::Generate_SolverState(node removedNode, Active_Path stolen_tree, vec
     // problem_state.originate = removedNode.originate;
     current_hisnode = removedNode.his_entry;
     
-    cur_active_tree.generate_path(sequence_node.partial_active_path);
+    // rebuilt the active path up to the depth of the stolen node
+    for(int i=0; i < size; i++) {
+        tree.Path[i] = stolen_tree.Path[i];
+    }
+    cur_active_tree.generate_path(tree);
+
     cur_active_tree.set_threadID(thread_id, thread_total);
     if (current_hisnode != NULL && !current_hisnode->explored) {
         current_hisnode->active_threadID = thread_id;
@@ -616,7 +622,7 @@ void solver::Generate_SolverState(node removedNode, Active_Path stolen_tree, vec
     int last_element = problem_state.cur_solution.back();
     problem_state.key = make_pair(bit_vector,last_element);
 
-    lb_curlv = sequence_node.load_info;
+    lb_curlv = removedNode.lb;
 
     return;
 }
