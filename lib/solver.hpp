@@ -112,15 +112,17 @@ class edge {
 
 class node {
     public:
-        int n = -1;
-        int lb = -1;
-        int nc = -1;
-        int partial_cost = -1;
-        bool node_invalid = false;
-        HistoryNode* his_entry = NULL;
+        int n;
+        int lb;
+        int nc;
+        int partial_cost;
+        bool node_invalid;
+        HistoryNode* his_entry;
         Active_Node* act_entry = NULL;
-        bool pushed = false;;
-        node(int x, int y): n{x},lb{y} {}
+        bool pushed;
+        node(int id, int lb);
+        node();
+        node(const node &src);
 };
 
 struct promise_stats {
@@ -154,14 +156,27 @@ class atomwrapper
 class instrct_node {
     public:
         vector<int> sequence;
-        int originate = -1;
-        int load_info = -1;
-        int parent_lv = -1;
-        bool* invalid_ptr = NULL;
-        bool deprecated = false;
+        int originate;
+        int load_info;
+        int parent_lv;
+        int n;
+        bool* invalid_ptr;
+        bool deprecated;
 
         Active_Path partial_active_path;
         HistoryNode* root_his_node;
+
+        instrct_node() {
+            sequence = vector<int>();
+            originate = -1;
+            load_info = -1;
+            parent_lv = -1;
+            invalid_ptr = NULL;
+            deprecated = false;
+            root_his_node = NULL;
+            n = -1;
+        }
+
         instrct_node(vector<int> sequence_src,int originate_src, int load_info_src, 
                      int best_costrecord_src, Active_Path temp_active_path, 
                      HistoryNode* temp_root_hisnode) {
@@ -171,6 +186,7 @@ class instrct_node {
             parent_lv = best_costrecord_src;
             partial_active_path = temp_active_path;
             root_his_node = temp_root_hisnode;
+            n = -1;
         }
 };
 
@@ -228,6 +244,99 @@ struct Global_Pool {
     deque<instrct_node> Unknown;
 };
 
+/**
+ * @brief a threadsafe vector of priority queues
+ * entry 0 is the root of the search tree. Every entry is another consecutive depth in the tree
+ * The dequeue contains nodes of depCnt 0
+ * 
+ */
+class LocalPool {
+    public:
+        list<vector<node>> localPool;
+
+        /**
+         * @brief remove pool from recusrive stack when finished at tree depth
+         * 
+         */
+        void removeCurrentDepth();
+
+        /**
+         * @brief add pool to recursive stack when starting new depth
+         * 
+         */
+        void addCurrentDepth();
+
+        /**
+         * @brief add a node to the ready_list of current depth
+         * 
+         */
+        void push_back(node);
+
+        /**
+         * @brief Set the Thread Id to match solver::threadid
+         * 
+         * @param id 
+         */
+        void setThreadId(int id);
+
+        /**
+         * @brief check if ready_list empty
+         * 
+         * @return true  ready_list for current depth empty
+         * @return false ready_list for current depth has at least 1 elem
+         */
+        bool empty();
+
+        /**
+         * @brief pop a node from the readylist queue
+         * 
+         * @return node removed from ready_list queue
+         */
+        node pop_back();
+
+        node back();
+
+        /**
+         * @brief will grab a random node from localPool.
+         * Prioritiezes nodes located in shallower ready_lists
+         * 
+         * @param max_depth limits depth of search
+         * @return node 
+         */
+        void requestShallowNode(int max_depth, node*);
+        
+        /**
+         * @brief resets the localPool to default empty state
+         * 
+         */
+        void clear();
+
+        std::vector<node>::iterator erase(std::vector<node>::iterator target);
+        std::vector<node>::iterator begin();
+        std::vector<node>::iterator end();
+
+        /**
+         * @brief Construct a new Local Pool object
+         * 
+         */
+        LocalPool();
+
+
+        size_t size() {
+            return localPool.back().size();
+        }
+
+        vector<node> getlist();
+
+        void sort();
+
+    private:
+        int currentDepth;
+        int threadId;
+        mutable mutex poolLock;
+        vector<bool> sorted;
+};
+
 class solver {
     private:        
         deque<instrct_node> wrksteal_pool;
@@ -235,6 +344,7 @@ class solver {
         vector<recur_state> recur_stack;
         Active_Allocator Allocator;
         Active_Path cur_active_tree;
+        LocalPool *ready_list;
         bool abandon_work = false;
         bool abandon_share = false;
         bool grabbed = false;
@@ -243,6 +353,7 @@ class solver {
         int mg_id = -1;
         bool speed_search = false;
         int lb_curlv = INT_MAX;
+        int depth;
 
         sop_state problem_state;
         sop_state back_up_state;
@@ -270,22 +381,23 @@ class solver {
         bool Is_promisethread(int t_id);
         bool Grab_from_GPQ(bool reserve);
         bool grab_restartnode();
-        bool Check_Local_Pool(deque<node>& enumeration_list,deque<node>& curlocal_nodes);
+        bool Check_Local_Pool(vector<node>& enumeration_list,deque<node>& curlocal_nodes);
         bool assign_workload(node& transfer_wlkload, pool_dest destination, space_ranking problem_property, HistoryNode* temp_hisnode);
         bool compare_sequence(vector<int>& sequence, int& target_depth);
         bool Steal_Workload();
         bool thread_stop_check(int target_prefix_cost, int target_depth, int target_lastnode, int target_key);
-        bool EnumerationList_PreProcess(deque<node>& enumeration_list,deque<node>& curlocal_nodes);
+        bool EnumerationList_PreProcess(vector<node>& enumeration_list,deque<node>& curlocal_nodes);
         int get_maxedgeweight();
         int dynamic_hungarian(int src, int dest);
         int shared_enumerate(int i);
         void enumerate();
         int get_mgid();
-        void transfer_wlkload();
-        void retrieve_from_local(deque<node>& curlocal_nodes, deque<node>& enumeration_list);
+        void transfer_wlkload(instrct_node *stolen_node);
+        void retrieve_from_local(deque<node>& curlocal_nodes, vector<node> &enumeration_list);
         void initialize_node_sharing();
         void Thread_Selection();
         void Shared_Thread_Selection();
+        void Generate_SolverState(node, Active_Path, vector<int>, int);
         void Generate_SolverState(instrct_node& sequence_node);
         void push_to_historytable(pair<boost::dynamic_bitset<>,int>& key,int lower_bound,HistoryNode** entry,bool backtracked);
         void assign_parameter(vector<string> setting);

@@ -123,6 +123,8 @@ static vector<bool_64> abandon_wlk_array;
 static vector<lptr_64> glp;
 static vector<mutex_64> lp_lock;
 static vector<unsigned_long_64> enumerated_nodes;
+static vector<LocalPool> GlobalLocalPools;
+static vector<solver*> SolversGlobal;
 
 //Restart Variable
 static int promise_Tlimit = 0;
@@ -358,16 +360,17 @@ bool solver::Wlkload_Request() {
 
 bool solver::Steal_Workload() {
     bool terminate = true;
-
-    while (active_thread > 0 && wrksteal_pool.empty()) {
+    instrct_node stolen_node;
+    while (active_thread > 0 && stolen_node.n == -1) {
         idle_counter++;
-        while (active_thread > 0 && wrksteal_pool.empty()) transfer_wlkload();
+        while (active_thread > 0 && stolen_node.n == -1) transfer_wlkload(&stolen_node);
         idle_counter--;
     }
 
-    if (!wrksteal_pool.empty()) {
-        Generate_SolverState(wrksteal_pool.front());
-        wrksteal_pool.pop_front();
+    if (!(stolen_node.n == -1)) {
+        // send single instrc node to Generate_SolverState
+        // need to gen instrct node when stealing??
+        Generate_SolverState(stolen_node);
         terminate = false;
     }
 
@@ -423,26 +426,35 @@ void LB_Calculate(int g_id, int t_id) {
     return;
 }
 
-void solver::transfer_wlkload() {
+void solver::transfer_wlkload(instrct_node *stolen_node) {
+    // 
     int designated_thread = -1;
-    while (active_thread > 0 && wrksteal_pool.empty()) {
-        designated_thread = rand() % thread_total;
-        //cout << "designated thread is " << designated_thread << endl;
-        if (busy_arr[designated_thread].load()) continue;
-        lp_lock[designated_thread].lck.lock();
-        busy_arr[thread_id].store(true);
-        size_t transfer_size = ceil((1 - pre_density) * glp[designated_thread].local_pool->size());
-        while (transfer_size > 0 && !glp[designated_thread].local_pool->empty()) {
-            if (glp[designated_thread].local_pool->back().load_info < best_cost) {
-                wrksteal_pool.push_back(glp[designated_thread].local_pool->back());
-                transfer_size--;
-            }
-            *(glp[designated_thread].local_pool->back().invalid_ptr) = true;
-            glp[designated_thread].local_pool->pop_back();
+    int searchDepth = 0;
+    boost::dynamic_bitset<> searchedThreads(thread_total);
+    node removedNode;
+    Active_Path stolen_tree;
+    vector<int> stolen_soln;
+
+    busy_arr[thread_id].store(true);
+    while (active_thread > 0 && removedNode.n == -1) {
+        if(searchedThreads.all()) {
+            searchDepth++;
+            searchedThreads.reset();
         }
-        busy_arr[thread_id].store(false);
-        lp_lock[designated_thread].lck.unlock();
+
+        designated_thread = rand() % thread_total;
+
+        if (busy_arr[designated_thread].load() || searchedThreads[designated_thread] == 1) continue;
+        GlobalLocalPools[designated_thread].requestShallowNode(searchDepth, &removedNode);
+        searchedThreads[designated_thread] = 1; // indicated thread is search at this depth
     }
+    if(removedNode.n != -1) {
+        stolen_tree = SolversGlobal[designated_thread]->cur_active_tree;
+        stolen_soln = SolversGlobal[designated_thread]->problem_state.cur_solution;
+        //Generate_SolverState(removedNode, stolen_tree, stolen_soln, searchDepth);
+    }
+
+    busy_arr[thread_id].store(false);
     return;
 }
 
@@ -545,6 +557,67 @@ void solver::regenerate_hungstate() {
     problem_state.hungarian_solver.prev = initial_hungstate[thread_id].prev;
     problem_state.hungarian_solver.fixed_rows = initial_hungstate[thread_id].fixed_rows;
     problem_state.hungarian_solver.fixed_columns = initial_hungstate[thread_id].fixed_columns;
+    return;
+}
+
+
+void solver::Generate_SolverState(node removedNode, Active_Path stolen_tree, vector<int> stolen_soln, int stolen_depth) {
+    int taken_node = -1;
+    int counter = 0;
+    vector<int> cur_soln = vector<int>();
+    for(int i = 0; i <= stolen_depth; i++) {
+        cur_soln.push_back(stolen_soln[i]);
+    }
+    cur_soln.push_back(removedNode.n);
+
+    int size = cur_soln.size();
+    int cur_node = cur_soln.front();
+
+    problem_state.cur_solution.clear();
+    problem_state.cur_cost = 0;
+    problem_state.taken_arr = default_state.taken_arr;
+    problem_state.depCnt = default_state.depCnt;
+
+    problem_state.cur_solution.push_back(cur_node);
+    problem_state.taken_arr[cur_node] = 1;
+    for (int vertex : dependent_graph[cur_node]) problem_state.depCnt[vertex]--;
+    counter++;
+    
+    regenerate_hungstate();
+
+    while (counter < size) {
+        taken_node = cur_soln[counter];
+        problem_state.taken_arr[taken_node] = 1;
+        for (int vertex : dependent_graph[taken_node]) problem_state.depCnt[vertex]--;
+        problem_state.cur_cost += cost_graph[cur_node][taken_node].weight;
+        problem_state.cur_solution.push_back(taken_node);
+        problem_state.hungarian_solver.fix_row(cur_node, taken_node);
+        problem_state.hungarian_solver.fix_column(taken_node, cur_node);
+        cur_node = taken_node;
+        counter++;
+    }
+
+    problem_state.initial_depth = problem_state.cur_solution.size();
+    problem_state.load_info = removedNode.lb;
+    // problem_state.originate = removedNode.originate;
+    current_hisnode = removedNode.his_entry;
+    
+    cur_active_tree.generate_path(sequence_node.partial_active_path);
+    cur_active_tree.set_threadID(thread_id, thread_total);
+    if (current_hisnode != NULL && !current_hisnode->explored) {
+        current_hisnode->active_threadID = thread_id;
+    }
+
+
+    boost::dynamic_bitset<> bit_vector(node_count, false);
+    for (auto node : problem_state.cur_solution) {
+        bit_vector[node] = true;
+    }
+    int last_element = problem_state.cur_solution.back();
+    problem_state.key = make_pair(bit_vector,last_element);
+
+    lb_curlv = sequence_node.load_info;
+
     return;
 }
 
@@ -997,7 +1070,6 @@ void solver::initialize_node_sharing() {
     return;
 }
 
-
 void solver::Check_Restart_Status(deque<node>& enumeration_list, deque<node>& curlocal_nodes) {
 
     if (thread_id == 0) {
@@ -1116,7 +1188,8 @@ void solver::Check_Restart_Status(deque<node>& enumeration_list, deque<node>& cu
     return;
 }
 
-bool solver::Check_Local_Pool(deque<node>& enumeration_list,deque<node>& curlocal_nodes) {
+/*
+bool solver::Check_Local_Pool(vector<node>& enumeration_list,deque<node>& curlocal_nodes) {
     bool pushed_to_local = false;
     bool insert_condition = false;
 
@@ -1144,8 +1217,9 @@ bool solver::Check_Local_Pool(deque<node>& enumeration_list,deque<node>& curloca
 
     return pushed_to_local;
 }
+*/
 
-bool solver::EnumerationList_PreProcess(deque<node>& enumeration_list,deque<node>& curlocal_nodes) {
+bool solver::EnumerationList_PreProcess(vector<node>& enumeration_list,deque<node>& curlocal_nodes) {
     if (enumeration_list.back().lb >= best_cost 
         || stop_init
         || (enable_threadstop && enumeration_list.back().his_entry != NULL 
@@ -1159,7 +1233,7 @@ bool solver::EnumerationList_PreProcess(deque<node>& enumeration_list,deque<node
         enumeration_list.pop_back();
         //current_stored_node--;
         
-        if (enumeration_list.empty() && !curlocal_nodes.empty()) retrieve_from_local(curlocal_nodes,enumeration_list);
+        // if (enumeration_list.empty() && !curlocal_nodes.empty()) retrieve_from_local(curlocal_nodes,enumeration_list);
 
         return true;
     }
@@ -1216,15 +1290,19 @@ int solver::get_mgid() {
 
 void solver::enumerate() {
     if (time_out) return;
+    if(SolversGlobal[thread_id] == NULL) {
+        SolversGlobal[thread_id] = this;
+    }
+    depth = depth + 1;
+    ready_list->addCurrentDepth();
 
     while (true) {
-        deque<node> ready_list;
         deque<node> curlocal_nodes;
         
         for (int i = node_count-1; i >= 0; i--) {
             if (!problem_state.depCnt[i] && !problem_state.taken_arr[i]) {
                 //Push vertices with 0 depCnt into the ready list
-                ready_list.push_back(node(i,-2));
+                ready_list->push_back(node(i,-2));
             }
         }
 
@@ -1235,21 +1313,27 @@ void solver::enumerate() {
 
         //cout << "Lv " << problem_state.cur_solution.size() << " ";
         
-        deque<node> enumeration_list;
-        deque<node> lbproc_list;
+        deque<node> enumeration_list; // Each depth level has its own enumeration ist
+        deque<node> lbproc_list; //list of fully processed nodes
         bool limit_insertion = false;
 
-        for (int i = 0; i < (int)ready_list.size(); i++) {
-            node dest = ready_list[i];
+        auto iterator = ready_list->begin();
+        while(iterator != ready_list->end()) {
+            node dest = *iterator;
             int src = problem_state.cur_solution.back();
             problem_state.cur_solution.push_back(dest.n);
             problem_state.cur_cost += cost_graph[src][dest.n].weight;
+            // if cur_cost > best prune this node
             if (problem_state.cur_cost >= best_cost) {
                 problem_state.cur_solution.pop_back();
                 problem_state.cur_cost -= cost_graph[src][dest.n].weight;
+                // remove node from pool
+                iterator = ready_list->erase(iterator);
                 continue;
             }
+            // if cur solution has reached leaf check soln and update
             if (problem_state.cur_solution.size() == (size_t)node_count) {
+                // update the current best cost
                 if (problem_state.cur_cost < best_cost) {
                     pthread_mutex_lock(&Sol_lock);
                     if (problem_state.cur_cost < best_cost) {
@@ -1291,19 +1375,24 @@ void solver::enumerate() {
                     }        
                     pthread_mutex_unlock(&Sol_lock);
                 }
+                // backtrack and continue
                 problem_state.suffix_cost = problem_state.cur_cost;
                 problem_state.cur_solution.pop_back();
                 problem_state.cur_cost -= cost_graph[src][dest.n].weight;
+                iterator = ready_list->erase(iterator);
                 continue;
             }
+
             problem_state.cur_solution.pop_back();
             problem_state.cur_cost -= cost_graph[src][dest.n].weight;
-            lbproc_list.push_back(dest);
+            // lbproc_list.push_back(dest);
+            ++iterator;
         }
 
         //auto start_time_wait = std::chrono::system_clock::now();
 
         //Issue LB sharing
+        /**
         while (speed_search) {
             bool complete = false;
             bool under_load = false;
@@ -1359,9 +1448,10 @@ void solver::enumerate() {
             complete = true;
             if (complete) break;
         }
-
-        for (int i = 0; i < (int)lbproc_list.size(); i++) {
-            node dest = lbproc_list[i];
+        **/
+        iterator = ready_list->begin();
+        while(iterator != ready_list->end()) {
+            node dest = *iterator;
             int src = problem_state.cur_solution.back();
             problem_state.cur_solution.push_back(dest.n);
             problem_state.cur_cost += cost_graph[src][dest.n].weight;
@@ -1372,18 +1462,19 @@ void solver::enumerate() {
             HistoryNode* his_node = NULL;
             Active_Node* active_node = NULL;
 
-            if (speed_search && lbproc_list[i].lb > 0) {
-                lower_bound = lbproc_list[i].lb;
-                if (lbproc_list[i].lb >= best_cost) {
+            if (speed_search && iterator->lb > 0) {
+                lower_bound = iterator->lb;
+                if (iterator->lb >= best_cost) {
                     problem_state.cur_solution.pop_back();
                     problem_state.cur_cost -= cost_graph[src][dest.n].weight;
                     problem_state.key.first[dest.n] = false;
                     problem_state.key.second = last_element;
+                    iterator = ready_list->erase(iterator);
                     continue;
                 }
             }
             else {
-                bool decision = HistoryUtilization(problem_state.key,&lower_bound,&taken,&his_node,problem_state.cur_cost);
+                bool putInTable = HistoryUtilization(problem_state.key,&lower_bound,&taken,&his_node,problem_state.cur_cost);
                 //enumerated_nodes[thread_id][problem_state.cur_solution.size()]++;
 
                 if (!taken) {
@@ -1393,11 +1484,12 @@ void solver::enumerate() {
                     problem_state.hungarian_solver.undue_row(src,dest.n);
                     problem_state.hungarian_solver.undue_column(dest.n,src);
                 }
-                else if (taken && !decision) {
+                else if (!putInTable) {
                     problem_state.cur_solution.pop_back();
                     problem_state.cur_cost -= cost_graph[src][dest.n].weight;
                     problem_state.key.first[dest.n] = false;
                     problem_state.key.second = last_element;
+                    iterator = ready_list->erase(iterator);
                     continue;
                 }
 
@@ -1410,60 +1502,51 @@ void solver::enumerate() {
                     problem_state.cur_cost -= cost_graph[src][dest.n].weight;
                     problem_state.key.first[dest.n] = false;
                     problem_state.key.second = last_element;
+                    iterator = ready_list->erase(iterator);
                     continue;
                 }
             }
-            enumeration_list.push_back(lbproc_list[i]);
-            enumeration_list.back().nc = cost_graph[src][dest.n].weight;
-            enumeration_list.back().pushed = taken;
-            enumeration_list.back().lb = lower_bound;
-            enumeration_list.back().act_entry = active_node;
-            enumeration_list.back().his_entry = his_node;
-            enumeration_list.back().partial_cost = problem_state.cur_cost;
+            iterator->nc = cost_graph[src][dest.n].weight;
+            iterator->pushed = taken;
+            iterator->lb = lower_bound;
+            iterator->act_entry = active_node;
+            iterator->his_entry = his_node;
+            iterator->partial_cost = problem_state.cur_cost;
+
             problem_state.key.first[dest.n] = false;
             problem_state.key.second = last_element;
 
             problem_state.cur_solution.pop_back();
             problem_state.cur_cost -= cost_graph[src][dest.n].weight;
-        }
-        if (!enumeration_list.empty()) sort(enumeration_list.begin(),enumeration_list.end(),bound_sort);
 
+            ++iterator;
+        }
+
+        // End update of Local Pool
+        if (!ready_list->empty()) ready_list->sort();
         HistoryNode* history_entry = NULL;
 
         int lb_liminsert = lb_curlv;
 
-        cur_active_tree.push_back(enumeration_list.size(),current_hisnode,Allocator);
+        cur_active_tree.push_back(ready_list->size(),current_hisnode,Allocator);
 
         CheckStop_Request();
 
-        while(!enumeration_list.empty()) {
-            if(EnumerationList_PreProcess(enumeration_list,curlocal_nodes)) continue;
-
-            //Check_Restart_Status(enumeration_list, curlocal_nodes);
-
-            if (abandon_share || abandon_work) {
-                curlocal_nodes.clear();
-                break;
-            }
-
-            taken_node = enumeration_list.back().n;
-            history_entry = enumeration_list.back().his_entry;
-            lb_curlv = enumeration_list.back().lb;
+        while(!ready_list->empty()) {
+            taken_node = ready_list->back().n;
+            history_entry = ready_list->back().his_entry;
+            lb_curlv = ready_list->back().lb;
             problem_state.key.first[taken_node] = true;
             problem_state.key.second = taken_node;
             
-            if (group_bestsolcnt == 0 && problem_state.cur_solution.size() > restart_data.depth && enumeration_list.back().lb <= restart_data.lb) {
-                restart_data.lb = enumeration_list.back().lb;
+            if (group_bestsolcnt == 0 && problem_state.cur_solution.size() > restart_data.depth && ready_list->back().lb <= restart_data.lb) {
+                restart_data.lb = ready_list->back().lb;
                 restart_data.depth = problem_state.cur_solution.size();
                 thread_load[thread_id].data_cnt++;
                 thread_load[thread_id].found_time = std::chrono::system_clock::now();
             }
 
-            enumeration_list.pop_back();
-
-            if (!stop_init) {
-                Check_Local_Pool(enumeration_list,curlocal_nodes);
-            }
+            ready_list->pop_back();
         
             u = problem_state.cur_solution.back();
             v = taken_node;
@@ -1478,19 +1561,26 @@ void solver::enumerate() {
                 }
             }
 
+            // update the dependencies of nodes with dep on taken node
             for (int vertex : dependent_graph[taken_node]) problem_state.depCnt[vertex]--;
 
+            // add taken node to cur solution
             problem_state.cur_solution.push_back(taken_node);
-            problem_state.taken_arr[taken_node] = 1;
-            problem_state.suffix_cost = 0;
+            problem_state.taken_arr[taken_node] = 1; // update taken array to reflect that taken node is gone
+            problem_state.suffix_cost = 0; // set suffix cost to 0 because node has been processed
 
-            HistoryNode* previous_hisnode = current_hisnode;
-            current_hisnode = history_entry;
 
+            HistoryNode* previous_hisnode = current_hisnode; // save this depth's current his node
+            current_hisnode = history_entry; // update the his node to reflect current status before recursive call
+
+            // explore the path under the taken node
             enumerate();
 
+            // update the cur history node to reflect current depth
             current_hisnode = previous_hisnode;
 
+            // entire path below taken node is now explored. reset the search at this depth for the next node from
+            // enumeration list if one available
             for (int vertex : dependent_graph[taken_node]) problem_state.depCnt[vertex]++;
             problem_state.taken_arr[taken_node] = 0;
             problem_state.cur_solution.pop_back();
@@ -1500,6 +1590,7 @@ void solver::enumerate() {
             problem_state.key.first[taken_node] = false;
             problem_state.key.second = problem_state.cur_solution.back();
 
+            // speed search? not necessary for program to complete need more info form Taspon
             if (speed_search) {
                 for (unsigned i = 0; i < shared_lbstate[mg_id].size(); i++) {
                     shared_lbstate[mg_id][i].undue_row(u,v);
@@ -1507,8 +1598,7 @@ void solver::enumerate() {
                 }
             }
             
-            retrieve_from_local(curlocal_nodes,enumeration_list);
-            
+            // Timeout
             if (thread_id == 0) {
                 auto cur_time = std::chrono::system_clock::now();
                 if (std::chrono::duration<double>(cur_time - start_time_limit).count() > t_limit) {
@@ -1518,6 +1608,8 @@ void solver::enumerate() {
                 }
             }
         }
+        // at this point all the nodes in the enumeration list have been explored.
+        // what this mean: there are no more nodes to explore at this level. will move up call stack
 
         if (stop_init && (int)problem_state.cur_solution.size() <= stop_depth) {
             stop_init = false;
@@ -1525,19 +1617,24 @@ void solver::enumerate() {
             last_node = -1;
         }
         
+        // make special update to history table when getting limit insertion set (80% full)
         if (limit_insertion && history_table.get_cur_size() < history_table.get_max_size()) {
             push_to_historytable(problem_state.key,lb_liminsert,NULL,false);
         }
-
+        
+        // update the current active tree by removing all nodes from this depth.
+        // interesting ?? cur active tree has entire enum list??
         cur_active_tree.pop_back(stop_init,Allocator);
 
         if (Wlkload_Request()) break;
     }
-
+    
+    ready_list->removeCurrentDepth();
+    depth = depth - 1;
     return;
 }
 
-void solver::retrieve_from_local(deque<node>& curlocal_nodes, deque<node>& enumeration_list) {
+void solver::retrieve_from_local(deque<node>& curlocal_nodes, vector<node>& enumeration_list) {
 
     lp_lock[thread_id].lck.lock();
     if (!curlocal_nodes.empty()) {
@@ -1703,8 +1800,10 @@ void solver::solve_parallel(int thread_num, int pool_size) {
     deque<sop_state>* solver_container;
     vector<thread> Thread_manager(thread_num);
     vector<int> ready_thread;
+    GlobalLocalPools = vector<LocalPool>(thread_num);
+    SolversGlobal = vector<solver*>(thread_num);
     //Initially fill the GPQ with solvers:
-    vector<node> ready_list;
+    vector<node> init_ready_list;
 
     solver_container = new deque<sop_state>();
     problem_state.cur_solution.push_back(0);
@@ -1714,7 +1813,7 @@ void solver::solve_parallel(int thread_num, int pool_size) {
     for (int i = node_count-1; i >= 0; i--) {
         if (!problem_state.depCnt[i] && !problem_state.taken_arr[i]) {
             //Push vertices with 0 depCnt into the ready list
-            ready_list.push_back(node(i,-1));
+            init_ready_list.push_back(node(i,-1));
         }
     }
 
@@ -1722,7 +1821,7 @@ void solver::solve_parallel(int thread_num, int pool_size) {
 
     sop_state initial_state = problem_state;
 
-    for (auto node : ready_list) {
+    for (auto node : init_ready_list) {
         int taken_node = node.n;
         int cur_node = initial_state.cur_solution.back();
         initial_state.taken_arr[taken_node] = 1;
@@ -1758,13 +1857,13 @@ void solver::solve_parallel(int thread_num, int pool_size) {
 
         if (target.cur_solution.size() == (unsigned) (node_count - 1)) break;
         solver_container->pop_front();
-        ready_list.clear();
+        init_ready_list.clear();
         for (int i = node_count-1; i >= 0; i--) {
-            if (!target.depCnt[i] && !target.taken_arr[i]) ready_list.push_back(node(i,-1));
+            if (!target.depCnt[i] && !target.taken_arr[i]) init_ready_list.push_back(node(i,-1));
         }
 
-        if (!ready_list.empty()) {
-            for (auto node : ready_list) {
+        if (!init_ready_list.empty()) {
+            for (auto node : init_ready_list) {
                 int vertex = node.n;
                 //Push split node back into GPQ
                 int taken_node = vertex;
@@ -1852,6 +1951,8 @@ void solver::solve_parallel(int thread_num, int pool_size) {
                 solvers[thread_cnt].problem_state.initial_depth = solvers[thread_cnt].problem_state.cur_solution.size();
                 solvers[thread_cnt].thread_id = thread_cnt;
                 solvers[thread_cnt].local_pool = new deque<instrct_node>();
+                solvers[thread_cnt].ready_list = &GlobalLocalPools[thread_cnt];
+                SolversGlobal[thread_cnt] = NULL;
                 thread_load[thread_cnt].cur_sol = &solvers[thread_cnt].problem_state.cur_solution;
                 glp[thread_cnt].local_pool = solvers[thread_cnt].local_pool;
                 origin_taken_arr[origin] = true;
@@ -1972,7 +2073,7 @@ void solver::solve(string filename,int thread_num) {
 
     max_edge_weight = get_maxedgeweight();
     problem_state.hungarian_solver = Hungarian(node_count, max_edge_weight+1, get_cost_matrix(max_edge_weight+1));
-    problem_state.hungarian_solver.start()/2;
+    problem_state.hungarian_solver.start();
     problem_state.depCnt = vector<int>(node_count,0);
     problem_state.taken_arr = vector<int>(node_count,0);
 
@@ -2322,4 +2423,134 @@ vector<vector<int>> solver::get_cost_matrix(int max_edge_weight) {
     }
 
     return matrix;
+}
+
+node::node() {
+    n = -1;
+    lb = -1;
+    nc = -1;
+    partial_cost = -1;
+    node_invalid = false;
+    his_entry = NULL;
+    act_entry = NULL;
+    pushed = false;
+}
+
+node::node(const node &src) {
+    n = src.n;
+    lb = src.lb;
+    nc = src.nc;
+    partial_cost = src.partial_cost;
+    node_invalid = src.node_invalid;
+    his_entry = src.his_entry;
+    act_entry = src.act_entry;
+    pushed = src.pushed;
+}
+
+node::node(int id, int _lb) {
+    n = id;
+    lb = _lb;
+    nc = -1;
+    partial_cost = -1;
+    node_invalid = false;
+    his_entry = NULL;
+    act_entry = NULL;
+    pushed = false;
+}
+
+LocalPool::LocalPool() {
+    threadId = -1;
+    currentDepth = -1;
+    localPool = list<vector<node>>();
+    sorted = vector<bool>();
+}
+void LocalPool::removeCurrentDepth() {
+    // removes current depth's ready list when finished
+    currentDepth--;
+    poolLock.lock();
+    sorted.pop_back();
+    localPool.pop_back();
+    poolLock.unlock();
+}
+
+void LocalPool::addCurrentDepth() {
+    // adds a new ready_list for current depth.
+    currentDepth++;
+    poolLock.lock();
+    sorted.push_back(false);
+    localPool.push_back(vector<node>());
+    poolLock.unlock();
+}
+
+void LocalPool::push_back(node readyNode) {
+    poolLock.lock();
+    localPool.back().push_back(readyNode);
+    poolLock.unlock();
+}
+
+node LocalPool::pop_back() {
+    node removedNode;
+    poolLock.lock();
+    removedNode = localPool.back().back();
+    localPool.back().pop_back();
+    poolLock.unlock();
+
+    return removedNode;
+}
+
+node LocalPool::back() {
+    return localPool.back().back();
+}
+
+bool LocalPool::empty() {
+    return localPool.back().empty();
+}
+
+void LocalPool::requestShallowNode(int searchDepth, node* removedNode) {
+    poolLock.lock();
+
+    list<vector<node>>::iterator poolIterator = localPool.begin();
+    int i = 0;
+    while(poolIterator != localPool.end() && i < searchDepth) {
+        poolIterator = poolIterator++;
+        ++i;
+    }
+    
+    if(poolIterator != localPool.end() && !poolIterator->empty()) {
+        *removedNode = (poolIterator->back());
+        poolIterator->pop_back();
+    }
+    poolLock.unlock();
+
+    return;
+}
+
+void LocalPool::setThreadId(int id) {
+    threadId = id;
+}
+
+void LocalPool::clear() {
+    poolLock.lock();
+    localPool.clear();
+    localPool.push_back(vector<node>());
+    poolLock.unlock();
+}
+
+std::vector<node>::iterator LocalPool::erase(std::vector<node>::iterator target) {
+    return localPool.back().erase(target);
+}
+
+std::vector<node>::iterator LocalPool::begin() {
+    return localPool.back().begin();
+}
+
+std::vector<node>::iterator LocalPool::end() {
+    return localPool.back().end();
+}
+
+void LocalPool::sort() {
+    poolLock.lock();
+    std::sort( begin(), end(), bound_sort);
+    poolLock.unlock();
+    sorted[currentDepth] = true;
 }

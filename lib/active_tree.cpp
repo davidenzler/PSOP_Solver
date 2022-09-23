@@ -24,6 +24,10 @@ Active_Node* Active_Path::get_element(int index) {
     return NULL;
 }
 
+size_t Active_Path::get_size() {
+    return Path.size();
+}
+
 Active_Node* Active_Path::back() {
     if (!Path.empty()) return Path.back();
     return NULL;

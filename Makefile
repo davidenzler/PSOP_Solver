@@ -1,10 +1,10 @@
-CC = g++
-CG = gcc
+CC = g++-9
+CG = gcc-9
 LINK = -o
 CXX_VERSION = -std=c++14 -pthread
-OPTIMIZATION = -O3 -c
-OPTIMIZATION_LINK = -O3
-CXXFLAG = -Wall $(CXX_VERSION)
+OPTIMIZATION = -c
+OPTIMIZATION_LINK = #-O3
+CXXFLAG = -g -Wall $(CXX_VERSION)
 SRC = ./src
 PBB_LIB = ./lib
 LKH_LIB = ./lib/LKH
