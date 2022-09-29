@@ -14,7 +14,8 @@ using namespace std;
 int main(int argc, char*argv[]) {
     ifstream infile(argv[3]);
     solver s;
-
+    string results;
+    
     string line;
     vector<string> setting;
     bool execute = false;
@@ -34,7 +35,14 @@ int main(int argc, char*argv[]) {
     setpriority(PRIO_PROCESS, 0, -20);
     
     s.assign_parameter(setting);
-    s.solve(argv[1],atoi(argv[2]));
+    results = s.solve(argv[1],atoi(argv[2]));
     
+    string instance = argv[1];
+    string lib = instance.substr(0,6);
+    ofstream resultsFile;
+    string file = lib + "Results";
+    resultsFile.open(file);
+    resultsFile << argv[1] << "," << results << endl;
+    resultsFile.close();
     return 0;
 }
