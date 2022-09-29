@@ -434,23 +434,32 @@ void solver::transfer_wlkload(instrct_node *stolen_node) {
 
     busy_arr[thread_id].store(true);
     while (active_thread > 0 && removedNode.n == -1) {
-        if(searchedThreads.all()) {
+        bool complete = true;
+        for(int i=0; i < thread_total; i++) {
+            if(searchedThreads[i] == 0) {
+                complete = false;
+                break;
+            }
+        }
+        if(complete) {
             searchDepth++;
-            searchedThreads.reset();
         }
 
         designated_thread = rand() % thread_total;
 
         if (busy_arr[designated_thread].load() || searchedThreads[designated_thread] == 1) continue;
         GlobalLocalPools[designated_thread].requestShallowNode(searchDepth, &removedNode);
+        stolen_node->n = removedNode.n;
         searchedThreads[designated_thread] = 1; // indicated thread is search at this depth
     }
+
     if(removedNode.n != -1) {
         stolen_tree = SolversGlobal[designated_thread]->cur_active_tree;
         stolen_soln = SolversGlobal[designated_thread]->problem_state.cur_solution;
         Generate_SolverState(removedNode, stolen_tree, stolen_soln, searchDepth);
+        cout << "THREAD " << designated_thread << " WORK STEALING" << endl;
+        stolen = true;
     }
-    
     busy_arr[thread_id].store(false);
     return;
 }
@@ -604,8 +613,9 @@ void solver::Generate_SolverState(node removedNode, Active_Path stolen_tree, vec
     current_hisnode = removedNode.his_entry;
     
     // rebuilt the active path up to the depth of the stolen node
-    for(int i=0; i < size; i++) {
-        tree.Path[i] = stolen_tree.Path[i];
+    // start w/ 1 because Active_Path constructs with inital node set to Null (root)
+    for(int i=1; i < size; i++) {
+        tree.Path.push_back(stolen_tree.Path[i]);
     }
     cur_active_tree.generate_path(tree);
 
@@ -1225,21 +1235,18 @@ bool solver::Check_Local_Pool(vector<node>& enumeration_list,deque<node>& curloc
 }
 */
 
-bool solver::EnumerationList_PreProcess(vector<node>& enumeration_list,deque<node>& curlocal_nodes) {
-    if (enumeration_list.back().lb >= best_cost 
+bool solver::EnumerationList_PreProcess(LocalPool* enumeration_list) {
+    if (enumeration_list->back().lb >= best_cost 
         || stop_init
-        || (enable_threadstop && enumeration_list.back().his_entry != NULL 
-                              && enumeration_list.back().his_entry->Entry.load().prefix_cost < enumeration_list.back().partial_cost)
+        || (enable_threadstop && enumeration_list->back().his_entry != NULL 
+                              && enumeration_list->back().his_entry->Entry.load().prefix_cost < enumeration_list->back().partial_cost)
        )
     {   
         cur_active_tree.incre_children_cnt(Allocator);
-        if (enumeration_list.back().his_entry != NULL && enumeration_list.back().his_entry->active_threadID == thread_id) {
-            enumeration_list.back().his_entry->explored = true;
+        if (enumeration_list->back().his_entry != NULL && enumeration_list->back().his_entry->active_threadID == thread_id) {
+            enumeration_list->back().his_entry->explored = true;
         }
-        enumeration_list.pop_back();
-        //current_stored_node--;
-        
-        // if (enumeration_list.empty() && !curlocal_nodes.empty()) retrieve_from_local(curlocal_nodes,enumeration_list);
+        enumeration_list->pop_back();
 
         return true;
     }
@@ -1299,6 +1306,7 @@ void solver::enumerate() {
     if(SolversGlobal[thread_id] == NULL) {
         SolversGlobal[thread_id] = this;
     }
+
     depth = depth + 1;
     ready_list->addCurrentDepth();
 
@@ -1322,7 +1330,7 @@ void solver::enumerate() {
         deque<node> enumeration_list; // Each depth level has its own enumeration ist
         deque<node> lbproc_list; //list of fully processed nodes
         bool limit_insertion = false;
-
+        
         auto iterator = ready_list->begin();
         while(iterator != ready_list->end()) {
             node dest = *iterator;
@@ -1394,7 +1402,6 @@ void solver::enumerate() {
             // lbproc_list.push_back(dest);
             ++iterator;
         }
-
         //auto start_time_wait = std::chrono::system_clock::now();
 
         //Issue LB sharing
@@ -1515,6 +1522,9 @@ void solver::enumerate() {
             iterator->nc = cost_graph[src][dest.n].weight;
             iterator->pushed = taken;
             iterator->lb = lower_bound;
+
+            if(true) cout << "THREAD " << thread_id << " LB : " << lower_bound  <<  " :: BC: " << best_cost << ":: COST: " << problem_state.cur_cost << endl;
+
             iterator->act_entry = active_node;
             iterator->his_entry = his_node;
             iterator->partial_cost = problem_state.cur_cost;
@@ -1529,7 +1539,9 @@ void solver::enumerate() {
         }
 
         // End update of Local Pool
+
         if (!ready_list->empty()) ready_list->sort();
+
         HistoryNode* history_entry = NULL;
 
         int lb_liminsert = lb_curlv;
@@ -1539,6 +1551,11 @@ void solver::enumerate() {
         CheckStop_Request();
 
         while(!ready_list->empty()) {
+            //if( EnumerationList_PreProcess(ready_list) ) continue;
+            if (ready_list->back().lb >= best_cost) {
+                ready_list->pop_back();
+                continue;
+            }
             taken_node = ready_list->back().n;
             history_entry = ready_list->back().his_entry;
             lb_curlv = ready_list->back().lb;
@@ -1632,7 +1649,8 @@ void solver::enumerate() {
         // interesting ?? cur active tree has entire enum list??
         cur_active_tree.pop_back(stop_init,Allocator);
 
-        if (Wlkload_Request()) break;
+        if (Wlkload_Request())
+            break;
     }
     
     ready_list->removeCurrentDepth();
@@ -2041,7 +2059,7 @@ size_t solver::transitive_closure(vector<vector<int>>& isucc_graph) {
     return node_num;
 }
 
-void solver::solve(string filename,int thread_num) {
+string solver::solve(string filename,int thread_num) {
     if (thread_num == -1 || thread_num == 0) {
         cerr << "Incorrect Thread Number Input" << endl;
     }
@@ -2117,11 +2135,12 @@ void solver::solve(string filename,int thread_num) {
     auto end_time = chrono::high_resolution_clock::now();
 
     if (enable_lkh) if (LKH_thread.joinable()) LKH_thread.join();
-
+    ostringstream results;
     auto total_time = chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    auto timeComplete = total_time / (float)(1000000);
     cout << "------------------------" << thread_total << " thread" << "------------------------------" << endl;
-    cout << best_cost << "," << setprecision(4) << total_time / (float)(1000000) << endl;
-    
+    cout << best_cost << "," << setprecision(4) << timeComplete << endl;
+    results << best_cost << "," << timeComplete;
     
     /*
     for (int i = 0; i < thread_total; i++) {
@@ -2169,7 +2188,7 @@ void solver::solve(string filename,int thread_num) {
     }
     */
         
-    return;
+    return results.str();
 }
 
 
@@ -2513,9 +2532,14 @@ bool LocalPool::empty() {
 }
 
 void LocalPool::requestShallowNode(int searchDepth, node* removedNode) {
+    
     poolLock.lock();
-
     list<vector<node>>::iterator poolIterator = localPool.begin();
+
+    if(poolIterator->size() < searchDepth) {
+        return;
+    }
+
     int i = 0;
     while(poolIterator != localPool.end() && i < searchDepth) {
         poolIterator = poolIterator++;

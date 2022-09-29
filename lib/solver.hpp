@@ -338,7 +338,8 @@ class LocalPool {
 };
 
 class solver {
-    private:        
+    private:
+        bool stolen;        
         deque<instrct_node> wrksteal_pool;
         deque<instrct_node> *local_pool = NULL;
         vector<recur_state> recur_stack;
@@ -386,7 +387,7 @@ class solver {
         bool compare_sequence(vector<int>& sequence, int& target_depth);
         bool Steal_Workload();
         bool thread_stop_check(int target_prefix_cost, int target_depth, int target_lastnode, int target_key);
-        bool EnumerationList_PreProcess(vector<node>& enumeration_list,deque<node>& curlocal_nodes);
+        bool EnumerationList_PreProcess(LocalPool* enumeration_list);
         int get_maxedgeweight();
         int dynamic_hungarian(int src, int dest);
         int shared_enumerate(int i);
@@ -404,7 +405,7 @@ class solver {
         void check_workload_request(int i);
         void notify_finished();
         size_t transitive_closure(vector<vector<int>>& isucc_graph);
-        void solve(string filename,int thread_num);
+        string solve(string filename,int thread_num);
         void solve_parallel(int thread_num, int pool_size);
         void retrieve_input(string filename);
         void transitive_redundantcy();

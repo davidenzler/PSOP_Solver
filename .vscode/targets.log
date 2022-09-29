@@ -8,7 +8,7 @@ make: *** No rule to make target 'all'.  Stop.
 # This is free software: you are free to change and redistribute it.
 # There is NO WARRANTY, to the extent permitted by law.
 
-# Make data base, printed on Fri Sep 23 12:55:39 2022
+# Make data base, printed on Thu Sep 29 14:14:14 2022
 
 # Variables
 
@@ -111,7 +111,7 @@ MAKEFILES :=
 # automatic
 ^F = $(notdir $^)
 # environment
-SSH_CLIENT = 130.86.76.116 6825 22
+SSH_CLIENT = 130.86.76.116 12761 22
 # environment
 LESSCLOSE = /usr/bin/lesspipe %s %s
 # automatic
@@ -120,7 +120,6 @@ LESSCLOSE = /usr/bin/lesspipe %s %s
 PROG = sop_solver
 # environment
 LS_COLORS = 
- 
 # automatic
 +F = $(notdir $+)
 # 'override' directive
@@ -130,6 +129,7 @@ BROWSER = /home/jasper/.vscode-server/bin/74b1f979648cc44d385a2286793c226e611f59
 # environment
 LOGNAME = jasper
 # makefile (from '/home/jasper/research/PSOP_Solver/Makefile', line 17)
+ 
 _PBB_OBJS = main.o solver.o hash.o hungarian.o active_tree.o precedence.o active_allocate.o
 # makefile
 .DEFAULT_GOAL := sop_solver
@@ -148,7 +148,7 @@ _ = /home/jasper/.vscode-server/bin/74b1f979648cc44d385a2286793c226e611f59e7/nod
 # makefile (from '/home/jasper/research/PSOP_Solver/Makefile', line 2)
 CG = gcc-9
 # environment
-VSCODE_IPC_HOOK_CLI = /tmp/vscode-ipc-f48fd4af-416a-4d81-87d2-1155cf48dc19.sock
+VSCODE_IPC_HOOK_CLI = /tmp/vscode-ipc-639b255a-1a6a-4989-9f12-b473b59d488a.sock
 # environment
 VSCODE_AMD_ENTRYPOINT = vs/workbench/api/node/extensionHostProcess
 # environment
@@ -168,7 +168,7 @@ SUFFIXES :=
 # makefile (from '/home/jasper/research/PSOP_Solver/Makefile', line 1)
 CC = g++-9
 # environment
-SSH_CONNECTION = 130.86.76.116 6825 10.0.0.244 22
+SSH_CONNECTION = 130.86.76.116 12761 10.0.0.244 22
 # variable set hash-table stats:
 # Load=78/1024=8%, Rehash=0, Collisions=5/121=4%
 
@@ -196,6 +196,7 @@ obj/%.o: lib/%.cpp
 	$(CC) $(CXXFLAG) $(OPTIMIZATION) $< -o $@
 
 obj/%.o: lib/LKH/%.c
+ 
 #  recipe to execute (from '/home/jasper/research/PSOP_Solver/Makefile', line 84):
 	$(CG) $(OPTIMIZATION) $< -o $@
 
@@ -222,7 +223,6 @@ obj/active_tree.o:
 
 # Not a target:
 obj/fscanint.o:
- 
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
@@ -250,6 +250,7 @@ obj/FixedOrCommonCandidates.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
+ 
 
 # Not a target:
 obj/Statistics.o:
@@ -297,6 +298,7 @@ obj/main.o:
 obj/StoreTour.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
+ 
 #  File has not been updated.
 
 # Not a target:
@@ -337,7 +339,6 @@ obj/SolveSFCSubproblems.o:
 
 # Not a target:
 obj/SegmentSize.o:
- 
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
@@ -352,6 +353,7 @@ obj/BestSpecialOptMove.o:
 obj/Delaunay.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
+ 
 #  File has not been updated.
 
 # Not a target:
@@ -468,6 +470,7 @@ obj/SOP_InitialTour.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
+ 
 
 # Not a target:
 obj/C.o:
@@ -500,7 +503,6 @@ obj/solver.o:
 #  File has not been updated.
 
 # Not a target:
- 
 obj/RestoreTour.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
@@ -514,6 +516,7 @@ obj/CVRP_InitialTour.o:
 
 # Not a target:
 obj/KSwapKick.o:
+ 
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
@@ -556,6 +559,7 @@ obj/Penalty_CTSP.o:
 #  File has not been updated.
 
 # Not a target:
+ 
 obj/WriteCandidates.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
@@ -588,7 +592,6 @@ obj/SolveSubproblemBorderProblems.o:
 # Not a target:
 obj/Gain23.o:
 #  Implicit rule search has not been done.
- 
 #  Modification time never checked.
 #  File has not been updated.
 
@@ -605,6 +608,7 @@ obj/Best2OptMove.o:
 #  File has not been updated.
 
 # Not a target:
+ 
 obj/AllocateStructures.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
@@ -654,6 +658,7 @@ obj/GenerateCandidates.o:
 
 # Not a target:
 obj/MinimumSpanningTree.o:
+ 
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
@@ -677,7 +682,6 @@ obj/Penalty_CCVRP.o:
 #  File has not been updated.
 
 # Not a target:
- 
 obj/gpx.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
@@ -698,12 +702,13 @@ obj/SolveTourSegmentSubproblems.o:
 # Not a target:
 /home/jasper/research/PSOP_Solver/Makefile:
 #  Implicit rule search has been done.
-#  Last modified 2022-09-23 12:55:33.586764069
+#  Last modified 2022-09-23 13:18:30.289141056
 #  File has been updated.
 #  Successfully updated.
 
 # Not a target:
 obj/Distance_SOP.o:
+ 
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
@@ -748,7 +753,6 @@ obj/Penalty_MLP.o:
 obj/Make4OptMove.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
- 
 #  File has not been updated.
 
 # Not a target:
@@ -760,6 +764,7 @@ obj/CreateDelaunayCandidateSet.o:
 # Not a target:
 obj/STTSP2TSP.o:
 #  Implicit rule search has not been done.
+ 
 #  Modification time never checked.
 #  File has not been updated.
 
@@ -809,6 +814,7 @@ obj/RecordBestTour.o:
 # Not a target:
 obj/Penalty_TRP.o:
 #  Implicit rule search has not been done.
+ 
 #  Modification time never checked.
 #  File has not been updated.
 
@@ -853,12 +859,12 @@ obj/Best5OptMove.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
- 
 
 # Not a target:
 obj/Penalty_RCTVRP.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
+ 
 #  File has not been updated.
 
 # Not a target:
@@ -913,6 +919,7 @@ obj/ReadEdges.o:
 obj/CreateCandidateSet.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
+ 
 #  File has not been updated.
 
 # Not a target:
@@ -946,7 +953,6 @@ obj/Penalty_MTSP.o:
 #  File has not been updated.
 
 # Not a target:
- 
 obj/FreeStructures.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
@@ -1022,6 +1028,7 @@ obj/IsPossibleCandidate.o:
 obj/SFCTour.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
+ 
 #  File has not been updated.
 
 # Not a target:
@@ -1029,7 +1036,6 @@ obj/Penalty_1_PDTSP.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
- 
 
 # Not a target:
 obj/ChooseInitialTour.o:
@@ -1065,6 +1071,7 @@ sop_solver: obj/main.o obj/solver.o obj/hash.o obj/hungarian.o obj/active_tree.o
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
+ 
 #  recipe to execute (from '/home/jasper/research/PSOP_Solver/Makefile', line 74):
 	$(CC) $(CXXFLAG) $(OPTIMIZATION_LINK) $(LINK) $(PROG) $^
 
@@ -1091,7 +1098,6 @@ obj/Excludable.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
- 
 
 # Not a target:
 obj/Penalty_CVRP.o:
@@ -1129,6 +1135,7 @@ obj/Make5OptMove.o:
 #  Modification time never checked.
 #  File has not been updated.
 
+ 
 # Not a target:
 obj/CreateNNCandidateSet.o:
 #  Implicit rule search has not been done.
@@ -1176,13 +1183,13 @@ obj/active_allocate.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
+ 
 
 # Not a target:
 obj/SolveKCenterSubproblems.o:
 #  Implicit rule search has not been done.
 #  Modification time never checked.
 #  File has not been updated.
- 
 
 # Not a target:
 obj/Penalty_VRPPD.o:
@@ -1221,6 +1228,7 @@ obj/Genetic.o:
 # No 'vpath' search paths.
 
 # No general ('VPATH' variable) search path.
+ 
 
 # strcache buffers: 1 (0) / strings = 176 / storage = 3392 B / avg = 19 B
 # current buf: size = 8162 B / used = 3392 B / count = 176 / avg = 19 B
@@ -1228,6 +1236,6 @@ obj/Genetic.o:
 # strcache performance: lookups = 183 / hit rate = 3%
 # hash-table stats:
 # Load=176/8192=2%, Rehash=0, Collisions=2/183=1%
-# Finished Make data base on Fri Sep 23 12:55:39 2022
+# Finished Make data base on Thu Sep 29 14:14:14 2022
 
  
