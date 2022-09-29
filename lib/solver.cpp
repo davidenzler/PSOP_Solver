@@ -1934,7 +1934,7 @@ size_t solver::transitive_closure(vector<vector<int>>& isucc_graph) {
     return node_num;
 }
 
-void solver::solve(string filename,int thread_num) {
+string solver::solve(string filename,int thread_num) {
     if (thread_num == -1 || thread_num == 0) {
         cerr << "Incorrect Thread Number Input" << endl;
     }
@@ -2012,8 +2012,10 @@ void solver::solve(string filename,int thread_num) {
     if (enable_lkh) if (LKH_thread.joinable()) LKH_thread.join();
 
     auto total_time = chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    auto timeComplete = total_time / (float)(1000000);
     cout << "------------------------" << thread_total << " thread" << "------------------------------" << endl;
-    cout << best_cost << "," << setprecision(4) << total_time / (float)(1000000) << endl;
+    cout << best_cost << "," << setprecision(4) << timeComplete << endl;
+    results << best_cost << "," << timeComplete;
     
     
     /*
@@ -2062,7 +2064,7 @@ void solver::solve(string filename,int thread_num) {
     }
     */
         
-    return;
+    return results.str();
 }
 
 
