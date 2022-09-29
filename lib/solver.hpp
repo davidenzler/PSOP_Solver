@@ -292,7 +292,7 @@ class solver {
         void check_workload_request(int i);
         void notify_finished();
         size_t transitive_closure(vector<vector<int>>& isucc_graph);
-        void solve(string filename,int thread_num);
+        string solve(string filename,int thread_num);
         void solve_parallel(int thread_num, int pool_size);
         void retrieve_input(string filename);
         void transitive_redundantcy();
