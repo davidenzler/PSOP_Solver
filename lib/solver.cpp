@@ -2011,11 +2011,12 @@ string solver::solve(string filename,int thread_num) {
 
     if (enable_lkh) if (LKH_thread.joinable()) LKH_thread.join();
 
+    std::ostringstream result;
     auto total_time = chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
     auto timeComplete = total_time / (float)(1000000);
     cout << "------------------------" << thread_total << " thread" << "------------------------------" << endl;
     cout << best_cost << "," << setprecision(4) << timeComplete << endl;
-    results << best_cost << "," << timeComplete;
+    result << best_cost << "," << timeComplete;
     
     
     /*
@@ -2064,7 +2065,7 @@ string solver::solve(string filename,int thread_num) {
     }
     */
         
-    return results.str();
+    return result.str();
 }
 
 

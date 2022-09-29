@@ -41,7 +41,7 @@ int main(int argc, char*argv[]) {
     string lib = instance.substr(0,6);
     ofstream resultsFile;
     string file = lib + "Results";
-    resultsFile.open(file);
+    resultsFile.open(file, std::ios_base::app);
     resultsFile << argv[1] << "," << results << endl;
     resultsFile.close();
     return 0;
