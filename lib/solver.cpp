@@ -2010,7 +2010,7 @@ string solver::solve(string filename,int thread_num) {
     auto end_time = chrono::high_resolution_clock::now();
 
     if (enable_lkh) if (LKH_thread.joinable()) LKH_thread.join();
-
+    std::ostringstream results;
     auto total_time = chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
     auto timeComplete = total_time / (float)(1000000);
     cout << "------------------------" << thread_total << " thread" << "------------------------------" << endl;
