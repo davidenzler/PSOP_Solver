@@ -1,5 +1,5 @@
 CC = g++
-CG = gcc
+CG = gcc-9
 LINK = -o
 CXX_VERSION = -std=c++14 -pthread
 OPTIMIZATION = -O3 -c
